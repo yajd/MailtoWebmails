@@ -274,8 +274,10 @@ PrefListener.prototype.setDefaults = function() {
 */
 
 PrefListener.prototype.unregister = function() {
-  if (this._branch)
-    this._branch.removeObserver('', this);
+	Object.keys(this.watchBranches).forEach(function(branch_name) {
+		this.watchBranches[branch_name]._branchLive.removeObserver('', this, false);
+		console.log('removed observer from branch_name', branch_name);
+	}.bind(this));
 };
 
 PrefListener.prototype._callback = function (branch_name, pref_name) {
