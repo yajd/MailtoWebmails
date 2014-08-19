@@ -101,9 +101,11 @@ function PrefListener() {
 		this.watchBranches[branch_name]._branchLive = Services.prefs.getBranch(branch_name);
 		this.watchBranches[branch_name]._branchDefault = Services.prefs.getDefaultBranch(branch_name);
 		//this.watchBranches[branch_name]._branchLive.QueryInterface(Ci.nsIPrefBranch2); //do not need this anymore as i dont support FF3.x
-	});
+	}.bind(this));
 }
 
+const myPrefBranch = 'extensions.' + self.id + '@jetpack.';
+console.log("'extensions.' + self.id + '.'", myPrefBranch);
 PrefListener.prototype.watchBranches = {
 	/*
 	// start - demo
@@ -135,14 +137,31 @@ PrefListener.prototype.watchBranches = {
 	*/
 	
 	/* start - edit in here */
-	
+	'extensions.MailtoWebmails@jetpack.': {
+		prefNames: {
+			'one': {
+				default: 1,
+				value: null,
+				type: Ci.nsIPrefBranch.PREF_INT
+			},
+			'two': {
+				default: 2,
+				value: null,
+				type: Ci.nsIPrefBranch.PREF_INT,
+				onChange: function(oldVal, newVal, refObj) {
+					console.warn('change on refObj:', refObj, 'old:', oldVal, 'new:', newVal);
+				}
+			}
+		}
+	}
 	/* end - edit in here */
 }
 
 PrefListener.prototype.observe = function(subject, topic, data) {
 	console.log('incomcing PrefListener observe', 'topic=', topic, 'data=', data, 'subject=', subject);
+	console.info('compare subject to this._branchLive[extensions.MailtoWebmails@jetpack.]', this.watchBranches[subject.root]._branchLive);
 	if (topic == 'nsPref:changed')
-		this._callback(this._branch, data);
+		this._callback(subject.root, data);
 };
 
 /**
@@ -160,12 +179,12 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 		this.watchBranches[branch_name]._branchLive.getChildList('', {}).forEach(function(pref_name_on_branch) { //pref_name_on_branch is the name found on the branch in about:config (NOT the pref_name found in the prefNames object in the PrefListener.watchBranches object here
 			if (pref_name_on_branch in this.watchBranches[branch_name].prefNames) {
 				//pref_name_on_branch already exists in prefNames object
-				this.watchBranches[branch_name].prefNames[pref_name].setval = new this.prefSetval(pref_name, branch_name); //added setval to all pref_name's
+				this.watchBranches[branch_name].prefNames[pref_name_on_branch].setval = new this.prefSetval(pref_name_on_branch, branch_name); //added setval to all pref_name_on_branch's
 				if ('default' in this.watchBranches[branch_name].prefNames[pref_name_on_branch]) {
 					this.watchBranches[branch_name].prefNames[pref_name_on_branch].MayNotNeedToSetDefaultEvenIfSetDefaultsIsTrue = true;
 					//actually if just startup, and not install startup, it can get here
 					console.warn('this MUST not be startup aReason == install', 'code should ONLY get here on a startup that is not install, because the whole point here is to download the the prefs that exist on this branch but are not in the this.watchBranches[branch_name] object AND if i had set `default` key on it than it indicates that this addon owns it');
-					//default exists in the prefNames[pref_name] object so it means its a created key (its a pref_name owned by this addon)
+					//default exists in the prefNames[pref_name_on_branch] object so it means its a created key (its a pref_name_on_branch owned by this addon)
 				} else {
 					//start - block "A" copy
 					this.watchBranches[branch_name].prefNames[pref_name_on_branch].NotOwned = true;
@@ -177,7 +196,7 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 			} else {
 				//not in the prefNames object
 				this.watchBranches[branch_name].prefNames[pref_name_on_branch] = {};
-				this.watchBranches[branch_name].prefNames[pref_name].setval = new this.prefSetval(pref_name, branch_name); //added setval to all pref_name's
+				this.watchBranches[branch_name].prefNames[pref_name_on_branch].setval = new this.prefSetval(pref_name_on_branch, branch_name); //added setval to all pref_name_on_branch's
 				//start - block "A" copy
 				this.watchBranches[branch_name].prefNames[pref_name_on_branch].NotOwned = true;
 				var typeLong = this.watchBranches[branch_name]._branchLive.getPrefType(pref_name_on_branch);
@@ -185,7 +204,7 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 				this.watchBranches[branch_name].prefNames[pref_name_on_branch].default = this.watchBranches[branch_name]._branchDefault['get' + typeStrtypeStr_from_typeLong(typeLong) + 'Pref'](pref_name_on_branch); //note: im thinking it may be null if it has no default value, i need to test this out (note as of 080214 1025p)
 				//end - block "A" copy
 			}
-		});
+		}.bind(this));
 		//end - download prefs that are on this branch but not in this.watchBranches[branch_name].prefNames
 		
 		
@@ -199,7 +218,7 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 						//no longer skipping if MayNotNeedToSetDefaultEvenIfSetDefaultsIsTrue is set/true, as i found that in the startup proc i only do setDefaults if aReason is install,upgrade, or downgrade, but his was the message here and i modded the if else here: console.info('setDefaults is true HOWEVER, this pref was already found on the childList of the branch, so that obviously means the initial creation was done, and its owned by my addon so meaning it HAD HAD HAD to be created by my addon, and on install of my addon i do the set default SO NOT SETTING DEFAULT ON pref_name:', pref_name, 'branch_name:', branch_name);
 					}
 					console.info('setDefaults is true so will now set default on pref_name:', pref_name, 'in branch:', branch_name);
-					this.watchBranches[branch_name]._defaultBranch['set' + typeStr_from_typeLong(this.watchBranches[branch_name].prefNames[pref_name].type) + 'Pref'](pref_name, this.watchBranches[branch_name].prefNames[pref_name].default);
+					this.watchBranches[branch_name]._branchDefault['set' + typeStr_from_typeLong(this.watchBranches[branch_name].prefNames[pref_name].type) + 'Pref'](pref_name, this.watchBranches[branch_name].prefNames[pref_name].default);
 					console.log('finished setting default on pref_name:', pref_name, 'on branch:', branch_name);
 				}
 				if (trigger) {
@@ -216,14 +235,14 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 					console.log('DONE triggering callback for pref_name:', pref_name, 'on branch_name:', branch_name);
 				}
 			}
-		});		
+		}.bind(this));		
 		//end - go through all Owned prefNames on this branch, do what u need to do with them
 		
 		//should add observer after setting defaults otherwise it triggers the callbacks. this comment is old and i have not verified this as of 080314 1236a
 		this.watchBranches[branch_name]._branchLive.addObserver('', this, false);
 		console.log('added observer to branch_name', branch_name);
 		
-	});
+	}.bind(this));
 };
 
 /*
