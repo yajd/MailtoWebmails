@@ -332,13 +332,15 @@ PrefListener.prototype._callback = function (branch_name, pref_name) {
 ////end pref listener stuff
 //end pref stuff
 
+var myPrefListener;
+
 function startup(aData, aReason) {
 	self.aData = aData; //must go first, because functions in loadIntoWindow use self.aData
 
 	console.log('aReason=', aReason);
 	
 	//start pref stuff more
-	var myPrefListener = new PrefListener();
+	myPrefListener = new PrefListener();
 	console.log('myPrefListener=', myPrefListener);
 	//must forceCallbacks on startup, as the callbacks will read the inital prefs
 	if ([ADDON_INSTALL, ADDON_UPGRADE, ADDON_DOWNGRADE].indexOf(aReason) > -1) {
