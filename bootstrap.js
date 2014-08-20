@@ -183,7 +183,7 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 				if ('default' in this.watchBranches[branch_name].prefNames[pref_name_on_branch]) {
 					this.watchBranches[branch_name].prefNames[pref_name_on_branch].MayNotNeedToSetDefaultEvenIfSetDefaultsIsTrue = true;
 					//actually if just startup, and not install startup, it can get here
-					console.warn('this MUST not be startup aReason == install', 'code should ONLY get here on a startup that is not install, because the whole point here is to download the the prefs that exist on this branch but are not in the this.watchBranches[branch_name] object AND if i had set `default` key on it than it indicates that this addon owns it');
+					console.warn('this MUST not be startup aReason == install', 'code should ONLY get here on a startup that is not install, because the whole point here is to download the the prefs that exist on this branch but are not in the this.watchBranches[branch_name] object AND if i had set `default` key on it than it indicates that this addon owns it', 'ACTUALLY after testing, if preferences were not deleted on uninstall, on next install it will get here, im not sure if this is bad or not i just disocvered this, the setDefaults still happens so it may not be bad on L#220');
 					//default exists in the prefNames[pref_name_on_branch] object so it means its a created key (its a pref_name_on_branch owned by this addon)
 				} else {
 					//start - block "A" copy
@@ -243,6 +243,8 @@ PrefListener.prototype.register = function(setDefaults, trigger, aReasonStartup)
 		console.log('added observer to branch_name', branch_name);
 		
 	}.bind(this));
+	
+	this.registered = true;
 };
 
 /*
@@ -278,6 +280,66 @@ PrefListener.prototype.unregister = function() {
 		this.watchBranches[branch_name]._branchLive.removeObserver('', this, false);
 		console.log('removed observer from branch_name', branch_name);
 	}.bind(this));
+};
+
+PrefListener.prototype.uninstall = function(aReason) {
+	if (aReason == ADDON_UNINSTALL) { //have to put this here because uninstall fires on upgrade/downgrade too
+		//this is real uninstall
+		console.log('uninstalling so deleted owned branches. and delete owned prefs on UNowned branches');
+		//a branch is owned if all the prefs in the branch have a `default` key. as if unowned prefs exist on the branch they will get added by `register` function. THIS means that if `register` did not run, then i have to go through and check that all pref_name_on_branch (which is pref names downloaded from pref system based on branch name) are found in pref_name (which is pref names in the branch in object in this addon)
+		if (!this.registered) {
+			//lets not register observer/listener lets just "install" it which populates branches
+			myPrefListener = new PrefListener(); //this pouplates this.watchBranches[branch_name] so we can access .branchLive and .branchDefault IT WILL NOT register the perf observer/listener so no overhead there
+		}
+		
+		Object.keys(this.watchBranches).forEach(function(branch_name) {
+			var ownedPrefNames = []; //used to help ident if own branch or not
+			if (!this.registered) {
+				// register never ran, so need download prefs from branch so the "test if all prefs on this branch are owned" block after this if block can work correct to ident if should del branch or just single prefs
+				//start - download prefs to this.watchBranches[branch_name].prefNames that are on this branch but not in this.watchBranches[branch_name].prefNames
+				//this loop goes through ONLY the pref_name_on_branch which is the preferences on the branch BEFORE i created my owned prefs. however if this is not install, then owned prefs will also be found on the pref_name_on_branch
+				this.watchBranches[branch_name]._branchLive.getChildList('', {}).forEach(function(pref_name_on_branch) { //pref_name_on_branch is the name found on the branch in about:config (NOT the pref_name found in the prefNames object in the PrefListener.watchBranches object here
+					if (pref_name_on_branch in this.watchBranches[branch_name].prefNames) {
+						//pref_name_on_branch already exists in prefNames object in this addon (so like pref_name_on_object) so it MAY be owned or JUST watched will figure this out now
+						//pref_name_branch is watched, will now test if it has `default` key this will tell us if its owned
+						if (!('default' in this.watchBranches[branch_name].prefNames[pref_name_on_branch])) {
+							console.log('pref_name_on_branch: ', pref_name_on_branch, '... is in object but no default value in object so it is UNowned, so it is just watched, so do not touch this pref for uninstall purposes'); //*note:* so unowned means not created by this addon.
+						} else {
+							console.log('pref_name_on_branch: ', pref_name_on_branch, '... is in object WITH default value so it is OWNED')
+							ownedPrefNames.push(pref_name_on_branch);
+						}
+					} else {
+						//it is obvious we do not own this branch as pref_name_on_branch is NOT FOUND in object
+						//ownedPrefNames.push(pref_name_on_branch); //we need to delete this single pref
+					}
+				}.bind(this));
+				//end - download prefs that are on this branch but not in this.watchBranches[branch_name].prefNames
+				
+			} else {
+				//start - test if all prefs on this branch are owned to decide if should delete branch or just single prefs
+				Object.keys(this.watchBranches[branch_name].prefNames).forEach(function(pref_name) {
+					if (!this.watchBranches[branch_name].prefNames[pref_name].NotOwned) {
+						ownedPrefNames.push(pref_name);
+					}
+				}.bind(this));
+				//end - test if all prefs on this branch are owned to decide if should delete branch or just single prefs
+			}
+			if (ownedPrefNames.length > 0) {
+				if (ownedPrefNames.length == Object.keys(this.watchBranches[branch_name]).length) {
+					console.log('its a fully owned branch delete so deleting it, branch_name:', branch_name);
+					Services.prefs.deleteBranch(branch_name);
+				} else {
+					console.log('there were prefs on this branch_name', branch_name, 'that were created by this addon, so delete SINGLE OWNED PREFS, but the branch is not owned so WILL NOT del branch');
+					ownedPrefNames.forEach(function(pref_name) {
+						this.watchBranches[branch_name].branchLive.clearUserPref(pref_name);
+						this.watchBranches[branch_name].branchDefault.clearUserPref(pref_name); //this needs *todo* as i dont think it will delete from default branch, a not on mdn says it will do nothing when called on default branch
+					});
+				}
+			} else {
+				console.log('dev/addon owns no prefs in this branch, he was probably just watching some prefs. well he better have, would be a weirdo if put a branch name and didnt do add any prefs to watch [because he definitely didnt any to create any on this branch]');
+			}
+		}.bind(this));
+	}
 };
 
 PrefListener.prototype._callback = function (branch_name, pref_name) {
@@ -440,4 +502,10 @@ function shutdown(aData, aReason) {
 
 function install() {}
 
-function uninstall() {}
+function uninstall(aData, aReason) {
+	
+	//start pref stuff more
+	myPrefListener.uninstall(aReason); //deletes owned branches AND owned prefs on UNowned branches, this is optional, you can choose to leave your preferences on the users computer
+	//end pref stuff more
+	
+}
