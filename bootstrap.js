@@ -286,7 +286,7 @@ PrefListener.prototype.uninstall = function(aReason) {
 	console.log('in uninstall proc');
 	if (aReason == ADDON_UNINSTALL) { //have to put this here because uninstall fires on upgrade/downgrade too
 		//this is real uninstall
-		console.log('uninstalling so deleted owned branches. and delete owned prefs on UNowned branches');
+		console.log('uninstalling so delete owned branches. and delete owned prefs on UNowned branches');
 		//a branch is owned if all the prefs in the branch have a `default` key. as if unowned prefs exist on the branch they will get added by `register` function. THIS means that if `register` did not run, then i have to go through and check that all pref_name_on_branch (which is pref names downloaded from pref system based on branch name) are found in pref_name (which is pref names in the branch in object in this addon)
 		
 		Object.keys(this.watchBranches).forEach(function(branch_name) {
@@ -322,7 +322,7 @@ PrefListener.prototype.uninstall = function(aReason) {
 				//end - test if all prefs on this branch are owned to decide if should delete branch or just single prefs
 			}
 			if (ownedPrefNames.length > 0) {
-				if (ownedPrefNames.length == Object.keys(this.watchBranches[branch_name]).length) {
+				if (ownedPrefNames.length == Object.keys(this.watchBranches[branch_name].prefNames).length) {
 					console.log('its a fully owned branch delete so deleting it, branch_name:', branch_name);
 					Services.prefs.deleteBranch(branch_name);
 				} else {
@@ -504,6 +504,7 @@ function uninstall(aData, aReason) {
 	//start pref stuff more
 	if (!myPrefListener) {
 		//lets not register observer/listener lets just "install" it which populates branches
+		console.log('in uninstall had to soft install myPrefListener')
 		myPrefListener = new PrefListener(); //this pouplates this.watchBranches[branch_name] so we can access .branchLive and .branchDefault IT WILL NOT register the perf observer/listener so no overhead there
 	}
 	myPrefListener.uninstall(aReason); //deletes owned branches AND owned prefs on UNowned branches, this is optional, you can choose to leave your preferences on the users computer	
